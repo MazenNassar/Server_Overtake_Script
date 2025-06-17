@@ -17,12 +17,17 @@ local carsState = {}
 local wheelsWarningTimeout = 0
 local DriftTracking = ac.getCarState(1)
 local stored = { }
-local playerScores = {}
 local comboScore = 0
 local overtakeScore = 0
 local lastScore = 0
 local lasttop = "test"
 local lasttopscore = 0
+local localPlayerName = ac.getDriverName(0)
+leaderboard = {}
+
+local function getSpeedMultiplier(speed)
+    return math.clamp(speed / 100, 1.0, 2.0)  -- Adjust as needed (e.g., 100 km/h = 1x, 200+ km/h = 2x)
+end
 
 stored.lasttop = ac.storage('lasttop', lasttop) --default value
 stored.lasttopscore = ac.storage('lasttopscore', lasttopscore) --default value
@@ -32,19 +37,41 @@ lasttopscore = stored.lasttopscore:get()
 stored.playerscore = ac.storage('playerscore', highestScore) --default value
 highestScore = stored.playerscore:get()
 
-local leaderboard = {}
-
-ac.onSharedEvent("leaderboardData", function(data)
-  leaderboard = json.decode(data)
+-- Define the leaderboard update event
+local scoreUpdate = ac.OnlineEvent({
+  name1 = ac.StructItem.string(30),
+  drift1 = ac.StructItem.float(),
+  overtake1 = ac.StructItem.float(),
+  total1 = ac.StructItem.float(),
+  highest1 = ac.StructItem.float()
+}, function (sender, data)
+  -- Add or update the player’s score
+  leaderboard[data.name1] = {
+    drift = data.drift1,
+    overtake = data.overtake1,
+    total = data.total1,
+    highest = data.highest1,
+  }
 end)
 
-local function getSharedLeaderboard()
-  return leaderboard
+function abbreviateNumber(n)
+  if n >= 1e9 then
+    return string.format("%.2fB", n / 1e9)
+  elseif n >= 1e6 then
+    return string.format("%.2fM", n / 1e6)
+  elseif n >= 1e3 then
+    return string.format("%.2fK", n / 1e3)
+  else
+    return tostring(n)
+  end
 end
 
+
+local currentSpeedMultiplier = 1.0
 function script.update(dt)
 
     local player = ac.getCarState(1)
+    currentSpeedMultiplier = getSpeedMultiplier(player.speedKmh)
     if player.engineLifeLeft < 1 then
         if totalScore > highestScore then
             highestScore = math.floor(totalScore)
@@ -130,7 +157,8 @@ function script.update(dt)
             end
 
             if DriftTracking.isDriftValid then
-                        local points = math.ceil(1 * comboMeter)
+    			local speedMult = getSpeedMultiplier(player.speedKmh)
+    			local points = math.ceil(1 * comboMeter * speedMult)
                         comboScore = comboScore + points
                         totalScore = comboScore + overtakeScore
                         comboMeter = comboMeter + 0.02
@@ -142,7 +170,9 @@ function script.update(dt)
                 local posDot = math.dot(posDir, car.look)
                 state.maxPosDot = math.max(state.maxPosDot, posDot)
                 if posDot < -0.5 and state.maxPosDot > 0.5 then
-                                local points = math.ceil(10 * comboMeter)
+    				local speedMult = getSpeedMultiplier(player.speedKmh)
+    				local points = math.ceil(10 * comboMeter * speedMult)
+
                                 overtakeScore = overtakeScore + points
                                 totalScore = comboScore + overtakeScore
                                 comboMeter = comboMeter + 1
@@ -161,13 +191,14 @@ function script.update(dt)
 		local cnt = ac.getSimState().carsCount
         if os.clock() - lastSendTime > 2 then
   			lastSendTime = os.clock()
-  			ac.broadcastSharedEvent("scoreUpdate", json.encode({
-    			name = ac.getDriverName(0),
-    			drift = comboScore,
-    			overtake = overtakeScore,
-    			total = totalScore,
-    			highest = highestScore
-  			}))
+  			-- Send your own score
+scoreUpdate({
+  name1 = ac.getDriverName(0),
+  drift1 = comboScore,
+  overtake1 = overtakeScore,
+  total1 = totalScore,
+  highest1 = highestScore
+})
 		end
 end
 
@@ -206,7 +237,8 @@ end
 local speedWarning = 0
     local function getSortedLeaderboard()
         local list = {}
-        for _, data in pairs(playerScores) do
+        for _, data in pairs(leaderboard) do
+			data.name = _
 			if data.name and data.name ~= "" then
                 table.insert(list, data)
 			end
@@ -237,7 +269,7 @@ local speedWarning = 0
                 ui.drawLine(ref + vec2(0, 0), ref + vec2(speed, 0), colorAccent, 4)
             end
         end
-        ui.beginTransparentWindow("overtakeScore", vec2(600, 100), vec2(600, 600))
+        ui.beginTransparentWindow("Leaderboard", vec2(20, 100), vec2(600, 600), true, bit.bor(ui.WindowFlags.AlwaysAutoResize, ui.WindowFlags.NoTitleBar, ui.WindowFlags.NoResize))
         ui.beginOutline()
 
 		ui.pushStyleVar(ui.StyleVar.Alpha, 1 - speedWarning)
@@ -252,20 +284,25 @@ local speedWarning = 0
         ui.textColored("Drift Score: " .. comboScore .. " pts", white)
         ui.textColored("Overtake Score: " .. overtakeScore .. " pts", white)
         ui.textColored(string.format("Combo: %.1fx", comboMeter), white)
+	ui.textColored(string.format("Speed Multiplier: %.2fx", currentSpeedMultiplier), white)
         ui.offsetCursorY(30)
         ui.text("Leaderboard")
-        local leaderboard = getSharedLeaderboard()
         local localIndex = nil
-        for i, entry in ipairs(leaderboard) do
-        	if entry.isLocal then
+        for i, entry in ipairs(getSortedLeaderboard()) do
+        	if entry.name == localPlayerName then
         		localIndex = i
         		break
         	end
         end
-        for i, entry in ipairs(leaderboard) do
+        for i, entry in ipairs(getSortedLeaderboard()) do
         	local shouldDisplay = i <= 3 or i == localIndex - 1 or i == localIndex or i == localIndex + 1
         	if shouldDisplay then
-        		local color = entry.isLocal and rgbm(1, 1, 0, 1) or rgbm(1, 1, 1, 1)
+			local color
+			if entry.name == localPlayerName then
+			color = rgbm(1, 1, 0, 1)
+			else
+			color = rgbm(1, 1, 1, 1)
+			end
 				if i==1 and entry.name ~= lasttop and entry.highest ~= lasttopscore then
 					lasttop = entry.name
 					lasttopscore = entry.highest
@@ -273,8 +310,16 @@ local speedWarning = 0
 					stored.lasttopscore:set(lasttopscore)
 					ac.sendChatMessage("Driver: " .. entry.name .. " is now the TOP 1 server wide with highest score: " .. entry.highest .. " pts")
 				end
-        		ui.textColored(i .. ". " .. entry.name, color)
-        		ui.text("   Highest: " .. entry.highest .. "  |  Total: " .. entry.total .. "  |  Drift: " .. entry.drift .. "  |  Overtake: " .. entry.overtake)
+			if entry.name == localPlayerName then
+			ui.textColored(i .. ". " .. "🔰 " .. entry.name, color)
+			else
+			ui.textColored(i .. ". " .. "" .. entry.name, color)
+			end
+        		ui.text("   Highest: " .. abbreviateNumber(entry.highest) ..
+        "  |  Total: " .. abbreviateNumber(entry.total) ..
+        "  |  Drift: " .. abbreviateNumber(entry.drift) ..
+        "  |  Overtake: " .. abbreviateNumber(entry.overtake))
+
 
         	end
         end
