@@ -159,7 +159,6 @@ function script.update(dt)
         end
     end
 		local cnt = ac.getSimState().carsCount
-		ac.sendChatMessage("No. of Drivers: " .. cnt .. " pts")
         if os.clock() - lastSendTime > 2 then
   			lastSendTime = os.clock()
   			ac.broadcastSharedEvent("scoreUpdate", json.encode({
