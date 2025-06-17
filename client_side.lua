@@ -1,5 +1,4 @@
 local requiredSpeed = 35
-local json = require('json')
 
 function script.prepare(dt)
     ac.debug("speed", ac.getCarState(1).speedKmh)
