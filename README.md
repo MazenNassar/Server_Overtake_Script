@@ -20,3 +20,6 @@ Highest: (Points) | Total: (Points) | Drift: (Points) | Overtake: (Points)
 Highest: (Points) | Total: (Points) | Drift: (Points) | Overtake: (Points)
 6.(The Player After You If You Are Not From The Top 3) 
 Highest: (Points) | Total: (Points) | Drift: (Points) | Overtake: (Points)
+
+Credits To:
+c1xtz(on discord)
