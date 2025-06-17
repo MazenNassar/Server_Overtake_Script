@@ -22,4 +22,4 @@ Highest: (Points) | Total: (Points) | Drift: (Points) | Overtake: (Points)
 Highest: (Points) | Total: (Points) | Drift: (Points) | Overtake: (Points)
 
 Credits To:
-c1xtz(on discord)
+@C1XTZ
